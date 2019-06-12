@@ -8,6 +8,16 @@ use Auth;
 
 class UsersController extends Controller
 {
+    public function __construct()
+    {
+        $this->middleware('auth', [
+            'except' => ['show', 'create', 'store']
+        ]);
+
+        $this->middleware('guest', [
+            'only' => ['create']
+        ]);
+    }
     public function create()
     {
         return view('users.create');
@@ -19,37 +29,41 @@ class UsersController extends Controller
     }
     public function store(Request $request)
     {
-        $this->validate($request, [
-            'name' => 'required|max:50',
-            'email' => 'required|email|unique:users|max:255',
-            'password' => 'required|confirmed|min:6'
-        ]);
+        $credentials = $this->validate($request, [
+           'email' => 'required|email|max:255',
+           'password' => 'required'
+       ]);
 
-        $user = User::create([
-            'name' => $request->name,
-            'email' => $request->email,
-            'password' => bcrypt($request->password),
-        ]);
-
-        Auth::login($user);
-        session()->flash('success', '欢迎，您将在这里开启一段新的旅程~');
-        return redirect()->route('users.show', [$user]);
+       if (Auth::attempt($credentials, $request->has('remember'))) {
+           session()->flash('success', '欢迎回来！');
+           $fallback = route('users.show', Auth::user());
+           return redirect()->intended($fallback);
+       } else {
+           session()->flash('danger', '很抱歉，您的邮箱和密码不匹配');
+           return redirect()->back()->withInput();
+       }
     }
     public function edit(User $user)
     {
+        $this->authorize('update',$user);
         return view('users.edit',compact('user'));
     }
     public function update(User $user, Request $request)
     {
+        $this->authorize('update', $user);
         $this->validate($request, [
             'name' => 'required|max:50',
-            'password' => 'required|confirmed|min:6'
+            'password' => 'nullable|confirmed|min:6'
         ]);
 
-        $user->update([
-            'name' => $request->name,
-            'password' => bcrypt($request->password),
-        ]);
+        $data = [];
+        $data['name'] = $request->name;
+        if ($request->password) {
+            $data['password'] = bcrypt($request->password);
+        }
+        $user->update($data);
+
+        session()->flash('success', '个人资料更新成功！');
 
         return redirect()->route('users.show', $user->id);
     }
